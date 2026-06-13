@@ -106,7 +106,7 @@ func setupModels(modelsMap map[string]string, configFilePath string) bool{
     fmt.Println("please paste each api to their respective provider, leave out if you wish to skip the model") 
 
 		models := [2]string{"GEMINI", "CHATGPT"}
-		for i := 0; i<=2; i++{
+		for i := 0; i<2; i++{
 				fmt.Printf("%v KEY: \n", models[i])
 				reader := bufio.NewReader(os.Stdin)
 				 
@@ -130,7 +130,7 @@ func setupModels(modelsMap map[string]string, configFilePath string) bool{
 	func saveModelKeys(modelsMap map[string]string, configFilePath string)bool{
 
 
-		file, err := os.Open(configFilePath)
+		file, err := os.OpenFile(configFilePath, os.O_WRONLY, 0644)
 		if err != nil{
 			fmt.Printf("Failure opening config file, %v\n", err)
 			return false
