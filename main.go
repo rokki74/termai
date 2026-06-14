@@ -7,26 +7,44 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path"
 	"strings"
-
+	"syscall"
 	"github.com/sashabaranov/go-openai"
 )
 
 func main() {
 	fmt.Println("WELCOME TO TERMAI")
   fmt.Println("Using gemini 2.5 flash and GPT4o mini as available options for target engines...")
-
+  
+	sigChan := make(chan os.Signal, 1)
+  signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 	targetEngine := "gemini" 
 	
 	var client *openai.Client
 	var modelName string
   
 	mdls := make(map[string]string)
-  setup(mdls);
 
+	homedir, err := os.UserHomeDir()
+	if err != nil{
+		fmt.Printf("Error occurred during setup cannot get home directory, error: %v\n",err)
+	}
+	configFileName := "termaiconfig.txt"
+	configFilePath := path.Join(homedir, configFileName)
+  setup(mdls, configFilePath);
+
+	fmt.Println("Reading saved configuration..")
+	models := make(map[string]string) 
+	if err := readConfigFile(models, configFilePath); err != nil{
+		log.Fatal("Unable to read the config file, may have been deleted!")
+	}
+
+	log.Println("Read the configs successfully!\n Waiting for llm's response...")
 	if targetEngine == "gemini" {
-		gem, ok := mdls["GEMINI"]
+		log.Println("Using selected model Gemini...")
+		gem, ok := models["GEMINI"]
 		if !ok{
 			fmt.Println("key GEMINI key not found in map")
 			return
@@ -37,7 +55,9 @@ func main() {
 		client = openai.NewClientWithConfig(config)
 		modelName = "gemini-2.5-flash"
 	} else {
-		gpt, ok := mdls["CHATGPT"]
+
+		log.Println("Using selected model Chatgpt...")
+		gpt, ok := models["CHATGPT"]
 		if !ok{
 			fmt.Println("key CHATGPT key not found in map")
 			return
@@ -47,35 +67,58 @@ func main() {
 		modelName = openai.GPT4o
 	}
 
-	// From here, the execution logic is exactly the same for both
-	resp, err := client.CreateChatCompletion(
-		context.Background(),
-		openai.ChatCompletionRequest{
-			Model: modelName,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: "Explain bitmask space management in slotted pages.",
-				},
-			},
-		},
-	)
+	log.Println("Type in your prompt: ")
 
-	if err != nil {
-		fmt.Printf("ChatCompletion error: %v\n", err)
-		return
-	}
-
-	fmt.Println(resp.Choices[0].Message.Content)
+	for{
+		  select{
+			case <-sigChan:
+				fmt.Println("Bye!")
+				os.Exit(0)
+			default:
+				runAi(*client, modelName)
+			}
+	}	
 }
 
-func setup(mdls map[string]string){
-	homedir, err := os.UserHomeDir()
-	if err != nil{
-		fmt.Printf("Error occurred during setup cannot get home directory, error: %v\n",err)
-	}
-	configFileName := "termaiconfig.txt"
-	configFilePath := path.Join(homedir, configFileName)
+func runAi(client openai.Client, modelName string){
+	   var prompt string;
+
+			fmt.Print(">")
+      reader := bufio.NewScanner(os.Stdin)
+			if reader.Scan(){
+				prompt = reader.Text()
+			}
+
+			if err := reader.Err(); err != nil{
+				fmt.Println("Bye!")
+				os.Exit(0)
+			}
+
+			resp, err := client.CreateChatCompletion(
+				context.Background(),
+				openai.ChatCompletionRequest{
+					Model: modelName,
+					Messages: []openai.ChatCompletionMessage{
+						{
+							Role:    openai.ChatMessageRoleUser,
+							Content: prompt, 
+						},
+					},
+				},
+			)
+
+			if err != nil {
+				log.Printf("ChatCompletion error: %v\n", err)
+				return
+			}
+
+			fmt.Println("===============RESPONSE============")
+			fmt.Println(resp.Choices[0].Message.Content)
+
+}
+
+func setup(mdls map[string]string, configFilePath string){
+
 	fmt.Printf("using config file: %v for configurations.\n", configFilePath)
 	
 
@@ -91,7 +134,7 @@ func configureApiKeys(mdls map[string]string, configFilePath string){
 		}	
     
 		setupModels(mdls, configFilePath)
-		}else{
+	}else{
 			fmt.Println("Found an older configuration do you wish to change the saved keys? (yes/no)")
 		  var input string;
 			fmt.Scan(&input)
@@ -102,7 +145,7 @@ func configureApiKeys(mdls map[string]string, configFilePath string){
 		}
 }
 
-func setupModels(modelsMap map[string]string, configFilePath string) bool{
+func setupModels(modelsMap map[string]string, configFilePath string){
     fmt.Println("please paste each api to their respective provider, leave out if you wish to skip the model") 
 
 		models := [2]string{"GEMINI", "CHATGPT"}
@@ -124,7 +167,6 @@ func setupModels(modelsMap map[string]string, configFilePath string) bool{
 		}else{
 			log.Fatal("Could not save the api keys, please check again..")
 		}
-		return true
 	}
 
 	func saveModelKeys(modelsMap map[string]string, configFilePath string)bool{
@@ -155,14 +197,13 @@ func setupModels(modelsMap map[string]string, configFilePath string) bool{
 		return false
 	}
 
-func readConfigFile(configFilePath string) (map[string]string, bool){
+func readConfigFile(mdls map[string]string, configFilePath string) error{
    f, err := os.Open(configFilePath)
 
-	 mdls := make(map[string]string, 0)
 	 if err != nil{
 		 fmt.Printf("Failed to read configuration file due to error: %v, skip if it is the first time loading the tool...\n", err)
 		 
-		 return mdls,false
+		 return nil
 	 }
    defer f.Close()
 
@@ -183,5 +224,5 @@ func readConfigFile(configFilePath string) (map[string]string, bool){
 		 }
 	 }
 
-	 return mdls, true
+	 return nil
 }
