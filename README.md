@@ -34,8 +34,6 @@ Use mv instead to move thus: sudo mv termai /usr/local/bin
 2. Grant execution permissions
 sudo chmod +x /usr/local/bin/termai
 
-# 3. Fix the macOS Gatekeeper warning (avoids the "Developer cannot be verified" popup)
-xattr -d com.apple.quarantine /usr/local/bin/nvim-ai-filter  
 
 #### linux 
 1. Move or copy the compiled binary to the system path
