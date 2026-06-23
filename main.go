@@ -3,226 +3,229 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
-	"os/signal"
 	"path"
 	"strings"
-	"syscall"
 	"github.com/sashabaranov/go-openai"
 )
 
-func main() {
-	fmt.Println("WELCOME TO TERMAI")
-  fmt.Println("Using gemini 2.5 flash and GPT4o mini as available options for target engines...")
-  
-	sigChan := make(chan os.Signal, 1)
-  signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
-	targetEngine := "gemini" 
-	
-	var client *openai.Client
-	var modelName string
-  
-	mdls := make(map[string]string)
+func main(){
+	verbosity := flag.Bool("v", false, "-v for opting between verbosrre output and non verbose, get more information when verbose selected")
+	interactivity := flag.Bool("i", false, "-i to opt into interactive mode or out whereby you won't have to retype the ./termai command before running the tool everytime")
+	targetEngine := flag.String("target", "gemini", "-target Use this to choose between the models you want to use for example -target='chatgpt'")
+	query := flag.String("search", "", "-search='your query' use to search your query directly and return immediately or get output out at once without any other functionality of the code. Useful when working with long chained pipelines and you need the result as just what the model answers back with no additional tool's information.")
+	installCmd := flag.NewFlagSet("install", flag.ExitOnError)
 
+	if *verbosity{
+		log.Println("Getting the home directory for saving configs into file")
+	}
 	homedir, err := os.UserHomeDir()
 	if err != nil{
-		fmt.Printf("Error occurred during setup cannot get home directory, error: %v\n",err)
-	}
-	configFileName := "termaiconfig.txt"
-	configFilePath := path.Join(homedir, configFileName)
-  setup(mdls, configFilePath);
-
-	fmt.Println("Reading saved configuration..")
-	models := make(map[string]string) 
-	if err := readConfigFile(models, configFilePath); err != nil{
-		log.Fatal("Unable to read the config file, may have been deleted!")
+		log.Fatalf("Could not get the home directory. Error: %v", err)
 	}
 
-	log.Println("Read the configs successfully!\n Waiting for llm's response...")
-	if targetEngine == "gemini" {
-		log.Println("Using selected model Gemini...")
-		gem, ok := models["GEMINI"]
-		if !ok{
-			fmt.Println("key GEMINI key not found in map")
-			return
+	configFile := path.Join(homedir, "termaiconfig.txt")
+	availableModels := []string{"GEMINI", "CHATGPT"}
+	if len(os.Args)>1 && os.Args[1] =="install"{
+		installCmd.Parse(os.Args[2:])
+		if *verbosity{
+			log.Println("Running initial setup")
 		}
-		config := openai.DefaultConfig(gem)
-		// Reroute the OpenAI client to Google's compatibility endpoint
-		config.BaseURL = "https://generativelanguage.googleapis.com/v1beta/openai/v1"
-		client = openai.NewClientWithConfig(config)
-		modelName = "gemini-2.5-flash"
-	} else {
-
-		log.Println("Using selected model Chatgpt...")
-		gpt, ok := models["CHATGPT"]
-		if !ok{
-			fmt.Println("key CHATGPT key not found in map")
-			return
-		}
-		config := openai.DefaultConfig(gpt)
-		client = openai.NewClientWithConfig(config)
-		modelName = openai.GPT4o
+	  install(configFile, availableModels)
 	}
 
-	log.Println("Type in your prompt: ")
-
-	for{
-		  select{
-			case <-sigChan:
-				fmt.Println("Bye!")
-				os.Exit(0)
-			default:
-				runAi(*client, modelName)
-			}
-	}	
-}
-
-func runAi(client openai.Client, modelName string){
-	   var prompt string;
-
-			fmt.Print(">")
-      reader := bufio.NewScanner(os.Stdin)
-			if reader.Scan(){
-				prompt = reader.Text()
-			}
-
-			if err := reader.Err(); err != nil{
-				fmt.Println("Bye!")
-				os.Exit(0)
-			}
-
-			resp, err := client.CreateChatCompletion(
-				context.Background(),
-				openai.ChatCompletionRequest{
-					Model: modelName,
-					Messages: []openai.ChatCompletionMessage{
-						{
-							Role:    openai.ChatMessageRoleUser,
-							Content: prompt, 
-						},
-					},
-				},
-			)
-
-			if err != nil {
-				log.Printf("ChatCompletion error: %v\n", err)
-				return
-			}
-
-			fmt.Println("===============RESPONSE============")
-			fmt.Println(resp.Choices[0].Message.Content)
-
-}
-
-func setup(mdls map[string]string, configFilePath string){
-
-	fmt.Printf("using config file: %v for configurations.\n", configFilePath)
-	
-
-  configureApiKeys(mdls, configFilePath)
-}
-
-func configureApiKeys(mdls map[string]string, configFilePath string){
-	_, err := os.Stat(configFilePath)
-  if err !=nil && errors.Is(err, os.ErrNotExist){
-		fmt.Println("api keys not configured\n Please paste in your api keys if this is your first time")
-		if _, e := os.Create(configFilePath); e !=nil{
-			log.Fatalf("Error occurred creating the configuration file. error: %v\n", e)
-		}	
-    
-		setupModels(mdls, configFilePath)
-	}else{
-			fmt.Println("Found an older configuration do you wish to change the saved keys? (yes/no)")
-		  var input string;
-			fmt.Scan(&input)
-
-			if strings.ToLower(input) == "yes"{
-			    setupModels(mdls, configFilePath)
-       }
+	if *verbosity{
+			log.Println("Configuring..")
 		}
-}
+  config(configFile, availableModels)
 
-func setupModels(modelsMap map[string]string, configFilePath string){
-    fmt.Println("please paste each api to their respective provider, leave out if you wish to skip the model") 
-
-		models := [2]string{"GEMINI", "CHATGPT"}
-		for i := 0; i<2; i++{
-				fmt.Printf("%v KEY: \n", models[i])
-				reader := bufio.NewReader(os.Stdin)
-				 
-				input, err := reader.ReadString('\n')
-				if err !=nil{
-					log.Printf("skipping %v's key..\n", models[i])
-				}
-
-        modelsMap[models[i]] = strings.TrimSpace(input)
-		}
-
-	
-		if saveModelKeys(modelsMap, configFilePath){
-			fmt.Println("Almost there, final touches...")
-		}else{
-			log.Fatal("Could not save the api keys, please check again..")
-		}
+	if *verbosity{
+		log.Println("Reading the config file")
 	}
+ models, found := readConfigFile(configFile)
+ if !found{
+	 log.Fatal("Cannot find api keys, make sure to run termai -install before using the tool!")
+ }
 
-	func saveModelKeys(modelsMap map[string]string, configFilePath string)bool{
+	var client *openai.Client
+	var req openai.ChatCompletionRequest
+	switch *targetEngine{
+		case "gemini": 
+			apikey, found := models["GEMINI"]
+			if !found{
+				log.Fatal("Gemini's key not found, try running termai --install to fix the problem")
+			}
+			config := openai.DefaultConfig(apikey)
+			config.BaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
+			client = openai.NewClientWithConfig(config)
 
-		file, err := os.OpenFile(configFilePath, os.O_WRONLY, 0644)
-		if err != nil{
-			fmt.Printf("Failure opening config file, %v\n", err)
-			return false
+			req = openai.ChatCompletionRequest{
+				 Model: "gemini-3.5-flash",
+				 Stream: true,
+			}
+			if *verbosity{
+				log.Println("Using gemini as the target model")
+			}
+		case "chatgpt":
+			apikey, found := models["CHATGPT"]
+			if !found{
+				log.Fatal("Chatgpt's key not found, try running termai --install to fix the problem")
+			}
+			config := openai.DefaultConfig(apikey)
+			config.BaseURL = "https://generativelanguage.googleapis.com/v1beta"
+
+			client = openai.NewClientWithConfig(config)
+
+			req = openai.ChatCompletionRequest{
+				 Model: "gemini-3.5-flash",
+				 Stream: true,}	
+			if *verbosity{
+				log.Println("Using chatgpt as the target model")
+			}
+
+		default: 
+		   log.Fatalf("There doesn't exist such a model in support like %v", *targetEngine)
 		}
-    defer file.Close()
 
-		var written int = 0;
-		for mName := range modelsMap{
-			  mKey := modelsMap[mName]
-				n, err := fmt.Fprintf(file, "%s=%s\n", mName,mKey)
-				if err !=nil{
-					fmt.Printf("failed to save config for model %v due to error: %v\n", mName, err)
-					continue
-				}
+	if *verbosity{
+		log.Println("Ready to run..")
+	}
+ if isPiped(){
+	 runAi(client, &req, query)
+	 return
+ }else if *interactivity{
+ runInteractive(client, &req)
+	return
+ }
+}
 
-        written +=n;
-		}
-    
-		if written >0{
-			return true
-		}
+func isPiped() bool{
+	fileInfo, err := os.Stdin.Stat()
+	if err != nil{
 		return false
 	}
 
-func readConfigFile(mdls map[string]string, configFilePath string) error{
-   f, err := os.Open(configFilePath)
-
-	 if err != nil{
-		 fmt.Printf("Failed to read configuration file due to error: %v, skip if it is the first time loading the tool...\n", err)
-		 
-		 return nil
-	 }
-   defer f.Close()
-
-   scanner := bufio.NewScanner(f)
-
-	 for scanner.Scan(){
-		 line := strings.TrimSpace(scanner.Text())
-		 if line ==""||len(line)==0{
-			 continue
-		 }
-
-		 parts := strings.SplitN(line, "=", 2)
-		 if len(parts)==2{
-			 mName := strings.TrimSpace(parts[0])
-			 mKey := strings.TrimSpace(parts[1])
-
-			 mdls[mName]=mKey
-		 }
-	 }
-
-	 return nil
+	return (fileInfo.Mode() & os.ModeCharDevice) ==0
 }
+
+func runInteractive(client *openai.Client, req *openai.ChatCompletionRequest){
+ fmt.Println("WELCOME TO TERMAI HELPS YOU ACCESS INTERNET MODELS eg GPT, GEMINI\n pipe, ask interactively or one line command to provide input, use --help to find out the correct flags to use for example ./termai --help")
+
+ for{
+	 fmt.Println("/termai>")
+	 bytes, err := io.ReadAll(os.Stdin)
+	 if err !=nil{
+		 log.Fatalf("Error encountered reading input, %v", err)
+	 }
+
+	 prompt := string(bytes)
+	 runAi(client, req, &prompt)
+ }
+}
+
+func runAi(client *openai.Client, req *openai.ChatCompletionRequest, prompt *string){
+	ctx := context.Background()
+
+  req.Messages = []openai.ChatCompletionMessage{
+			 {
+				 Role: openai.ChatMessageRoleUser,
+				 Content: *prompt,
+			 },
+		}
+
+	response, err := client.CreateChatCompletion(ctx, *req)
+	if err != nil{
+		log.Fatalf("Error occured with client, Error: %v\n", err)
+	}
+
+	 fmt.Println(response.Choices[0].Message.Content)
+}
+
+func config(configFile string, availableModels []string){
+   _, err := os.Stat(configFile)
+   if os.IsNotExist(err){
+		 log.Println("Didn't find previous configs, prompting for install ..")
+	 install(configFile, availableModels)
+	 }
+
+	 log.Println("Found a configuration file do you wish to override and setup new apikeys? (yes/no)")
+	 var input string
+	 fmt.Scan(&input)
+
+	 if strings.ToLower(input)=="yes"{
+		 install(configFile, availableModels) 
+	 }
+}
+
+func install(configFile string, availableModels []string){
+	fmt.Println("CONFIGURING TERMAI. Follow prompts to continue")
+	fmt.Println("Enter the api keys in provided fields")
+
+	models := make(map[string]string, 0)
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for i :=0; i<len(availableModels); i++{
+		fmt.Printf("%v API KEY: ", availableModels[i])	
+    
+		var prompt string
+		if scanner.Scan(){
+       prompt = scanner.Text()
+
+		   models[availableModels[i]] = strings.TrimSpace(prompt)
+		}
+
+		if err := scanner.Err(); err != nil{
+			log.Printf("Error occurred reading in the api key for model:  %v, Error: %v", availableModels[i], err)
+		  continue
+		}
+	}
+
+	written := writeConfigFile(configFile, models)
+
+	if !written{
+		log.Fatalf("Could not write config file %v", configFile)
+	}
+}
+
+func readConfigFile(configFile string)(map[string]string, bool){
+  f, err := os.Open(configFile)	
+	if err != nil{
+		log.Fatalf("Error reading file. Error: %v", err)
+	}
+  defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+
+	models := make(map[string]string, 0)
+	for scanner.Scan(){
+		line := scanner.Text()
+		mKey, mValue, found := strings.Cut(line, "=")
+		if !found{
+			continue
+		}
+
+		models[mKey] = mValue
+	}
+ 
+	return models, true
+}
+
+func writeConfigFile(configFile string, models map[string]string) bool{
+  f, err := os.OpenFile(configFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) 
+	if err != nil{
+		return false
+	}
+  defer f.Close() 
+
+	for key, value := range models{
+	  fmt.Fprintf(f, "%s=%s\n", strings.ToUpper(key), value)	
+	}
+
+	return true
+}
+
