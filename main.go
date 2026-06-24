@@ -144,7 +144,6 @@ func runInteractive(client *openai.Client, req *openai.ChatCompletionRequest){
 	 }
 	 prompt := strings.TrimSpace(inputBuilder.String())
 
-	 log.Printf("The inputted string is: %v", prompt)
 	 runAi(client, req, &prompt)
  }
 }
@@ -215,7 +214,6 @@ func install(configFile string, availableModels []string){
     
 
 		enteredKey := strings.TrimSpace(inputBuilder.String())
-	  log.Printf("The inputted string is: %v", enteredKey)
 		 models[availableModels[i]] = strings.TrimSpace(enteredKey)
 		}
 
