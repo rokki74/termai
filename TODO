@@ -1,0 +1,7 @@
+Done with all additions of features and fixes. 
+Add to pull requests if you have any.
+
+Incase you might want to know what are the features i added on to termai, they were: 
+ Receiving inuts from pipes for example echo "Hello"|./termai or cat file|./termai 
+ Taking inputs directly thru --search flag  
+ Allows for interactivity thru -i flag
