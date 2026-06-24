@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path"
@@ -18,17 +17,17 @@ func main(){
 	interactivity := flag.Bool("i", false, "-i to opt into interactive mode or out whereby you won't have to retype the ./termai command before running the tool everytime")
 	targetEngine := flag.String("target", "gemini", "-target Use this to choose between the models you want to use for example -target='chatgpt'")
 	query := flag.String("search", "", "-search='your query' use to search your query directly and return immediately or get output out at once without any other functionality of the code. Useful when working with long chained pipelines and you need the result as just what the model answers back with no additional tool's information.")
+
+  flag.Parse()
+
 	installCmd := flag.NewFlagSet("install", flag.ExitOnError)
 
-	if *verbosity{
-		log.Println("Getting the home directory for saving configs into file")
-	}
-	homedir, err := os.UserHomeDir()
+  homedir, err := os.UserHomeDir()
 	if err != nil{
 		log.Fatalf("Could not get the home directory. Error: %v", err)
 	}
 
-	configFile := path.Join(homedir, "termaiconfig.txt")
+  configFile := path.Join(homedir, "termaiconfig.txt")
 	availableModels := []string{"GEMINI", "CHATGPT"}
 	if len(os.Args)>1 && os.Args[1] =="install"{
 		installCmd.Parse(os.Args[2:])
@@ -36,21 +35,25 @@ func main(){
 			log.Println("Running initial setup")
 		}
 	  install(configFile, availableModels)
-	}
+		return
+	}	
 
 	if *verbosity{
-			log.Println("Configuring..")
-		}
-  config(configFile, availableModels)
+		log.Println("Getting the home directory for saving configs into file")
+	}
 
 	if *verbosity{
 		log.Println("Reading the config file")
 	}
+
  models, found := readConfigFile(configFile)
  if !found{
 	 log.Fatal("Cannot find api keys, make sure to run termai -install before using the tool!")
  }
 
+  if *verbosity{
+		log.Println("Done setting things up, ready to call the models..")
+	}
 	var client *openai.Client
 	var req openai.ChatCompletionRequest
 	switch *targetEngine{
@@ -65,8 +68,7 @@ func main(){
 			client = openai.NewClientWithConfig(config)
 
 			req = openai.ChatCompletionRequest{
-				 Model: "gemini-3.5-flash",
-				 Stream: true,
+				 Model: "gemini-2.5-flash",
 			}
 			if *verbosity{
 				log.Println("Using gemini as the target model")
@@ -83,7 +85,7 @@ func main(){
 
 			req = openai.ChatCompletionRequest{
 				 Model: "gemini-3.5-flash",
-				 Stream: true,}	
+			 }	
 			if *verbosity{
 				log.Println("Using chatgpt as the target model")
 			}
@@ -95,6 +97,12 @@ func main(){
 	if *verbosity{
 		log.Println("Ready to run..")
 	}
+
+	if *query !=""{
+		runAi(client, &req, query)
+		return
+	}
+
  if isPiped(){
 	 runAi(client, &req, query)
 	 return
@@ -118,12 +126,24 @@ func runInteractive(client *openai.Client, req *openai.ChatCompletionRequest){
 
  for{
 	 fmt.Println("/termai>")
-	 bytes, err := io.ReadAll(os.Stdin)
-	 if err !=nil{
-		 log.Fatalf("Error encountered reading input, %v", err)
+   
+	 scanner := bufio.NewScanner(os.Stdin)
+   var inputBuilder strings.Builder
+
+	 for scanner.Scan(){
+		 line := scanner.Text()
+
+		 if line ==""{
+			 break
+		 }
+
+		 inputBuilder.WriteString(line +"\n")
 	 }
 
-	 prompt := string(bytes)
+	 if err := scanner.Err(); err != nil{
+		 fmt.Fprintf(os.Stderr, "Error reading standard input, Error %v", err)
+	 }
+	 prompt := inputBuilder.String()
 	 runAi(client, req, &prompt)
  }
 }
@@ -172,18 +192,29 @@ func install(configFile string, availableModels []string){
 	for i :=0; i<len(availableModels); i++{
 		fmt.Printf("%v API KEY: ", availableModels[i])	
     
-		var prompt string
-		if scanner.Scan(){
-       prompt = scanner.Text()
+		var inputBuilder strings.Builder
+		
+		for scanner.Scan(){
+			ln := scanner.Text()
 
-		   models[availableModels[i]] = strings.TrimSpace(prompt)
-		}
+			if ln ==""{
+				break
+			}
+
+			inputBuilder.WriteString(ln +"\n")
 
 		if err := scanner.Err(); err != nil{
 			log.Printf("Error occurred reading in the api key for model:  %v, Error: %v", availableModels[i], err)
-		  continue
+			continue
 		}
-	}
+    }
+    
+
+		enteredKey := inputBuilder.String()
+		 models[availableModels[i]] = strings.TrimSpace(enteredKey)
+		}
+
+		
 
 	written := writeConfigFile(configFile, models)
 
