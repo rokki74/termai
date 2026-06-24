@@ -62,7 +62,7 @@ func main(){
 			if !found{
 				log.Fatal("Gemini's key not found, try running termai --install to fix the problem")
 			}
-			config := openai.DefaultConfig(apikey)
+			config := openai.DefaultConfig(strings.TrimSpace(apikey))
 			config.BaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 			client = openai.NewClientWithConfig(config)
@@ -78,13 +78,12 @@ func main(){
 			if !found{
 				log.Fatal("Chatgpt's key not found, try running termai --install to fix the problem")
 			}
-			config := openai.DefaultConfig(apikey)
-			config.BaseURL = "https://generativelanguage.googleapis.com/v1beta"
+			config := openai.DefaultConfig(strings.TrimSpace(apikey))
 
 			client = openai.NewClientWithConfig(config)
 
 			req = openai.ChatCompletionRequest{
-				 Model: "gemini-3.5-flash",
+				 Model: "gpt-3.5-turbo",
 			 }	
 			if *verbosity{
 				log.Println("Using chatgpt as the target model")
@@ -143,14 +142,19 @@ func runInteractive(client *openai.Client, req *openai.ChatCompletionRequest){
 	 if err := scanner.Err(); err != nil{
 		 fmt.Fprintf(os.Stderr, "Error reading standard input, Error %v", err)
 	 }
-	 prompt := inputBuilder.String()
+	 prompt := strings.TrimSpace(inputBuilder.String())
+
+	 log.Printf("The inputted string is: %v", prompt)
 	 runAi(client, req, &prompt)
  }
 }
 
 func runAi(client *openai.Client, req *openai.ChatCompletionRequest, prompt *string){
 	ctx := context.Background()
-
+  
+	if len(*prompt) <3 || *prompt ==""{
+		return
+	}
   req.Messages = []openai.ChatCompletionMessage{
 			 {
 				 Role: openai.ChatMessageRoleUser,
@@ -210,7 +214,8 @@ func install(configFile string, availableModels []string){
     }
     
 
-		enteredKey := inputBuilder.String()
+		enteredKey := strings.TrimSpace(inputBuilder.String())
+	  log.Printf("The inputted string is: %v", enteredKey)
 		 models[availableModels[i]] = strings.TrimSpace(enteredKey)
 		}
 
