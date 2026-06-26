@@ -5,3 +5,4 @@ Incase you might want to know what are the features i added on to termai, they w
  Receiving inuts from pipes for example echo "Hello"|./termai or cat file|./termai 
  Taking inputs directly thru --search flag  
  Allows for interactivity thru -i flag
+Thinking of it we could actually make the http calls directly skipping the config and checks if it fails is when we ask the user to run termai install this should always then work afterwards. --This allows for increased responses and speed as now the tool skips everything only handing the user request to http req(eg making http calls to openai endpoints) and returning response back, as easy as this way.
